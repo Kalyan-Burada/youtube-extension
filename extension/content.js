@@ -41,6 +41,36 @@
     el.classList.remove("yt-relevance-blur");
   }
 
+  // Every container type that wraps a single video tile across YouTube's
+  // layouts. Order doesn't matter — closest() walks up to the nearest match.
+  //  - ytd-rich-item-renderer / ytd-grid-video-renderer : home feed
+  //  - ytd-video-renderer                                : search results
+  //  - ytd-compact-video-renderer                        : watch-page sidebar (classic)
+  //  - yt-lockup-view-model                              : NEW unified tile used in
+  //    the watch sidebar / "Up next" and rolling out elsewhere
+  const TILE_CONTAINERS =
+    "ytd-rich-item-renderer, ytd-video-renderer, ytd-compact-video-renderer, " +
+    "ytd-grid-video-renderer, yt-lockup-view-model";
+
+  // Tag-name patterns for a single video tile. Used as a fallback when the
+  // exact container above isn't matched, so a YouTube DOM rename (e.g. the
+  // watch sidebar moving to yt-lockup-view-model, or any future *-renderer)
+  // doesn't silently leave a whole section unfiltered.
+  const TILE_TAG_PATTERN = /lockup|compact-video|video-renderer|rich-item|grid-video|playlist-video/;
+
+  // The closest ancestor that represents ONE video tile. Walks up from the
+  // link: exact known containers first, then any custom element whose tag
+  // looks like a tile. Capped in depth so we never blur a whole shelf/column.
+  function findTile(link) {
+    const known = link.closest(TILE_CONTAINERS);
+    if (known) return known;
+    let el = link.parentElement;
+    for (let depth = 0; el && depth < 12; depth++, el = el.parentElement) {
+      if (TILE_TAG_PATTERN.test(el.tagName.toLowerCase())) return el;
+    }
+    return null;
+  }
+
   function scrapeVisibleVideos() {
     const found = [];
 
@@ -48,19 +78,28 @@
     const links = document.querySelectorAll("a[href*='/watch?v=']");
 
     links.forEach((link) => {
-      // Traverse up to the main video tile
-      const container = link.closest("ytd-rich-item-renderer, ytd-video-renderer, ytd-compact-video-renderer, ytd-grid-video-renderer");
-      
+      // Traverse up to the main video tile (exact match, then pattern fallback)
+      const container = findTile(link);
+
       // Skip if not a video tile, or if we've already scored/processed it
       if (!container || container.hasAttribute(PROCESSED_ATTR)) {
         return;
       }
 
-      // Title is usually inside an element with 'video-title', or we use the aria-label
-      const titleEl = container.querySelector("[id*='video-title']");
+      // Title location varies by layout. Try the classic id-based node, then
+      // the new lockup title node, then fall back to the link's own
+      // title/aria-label/text so a new layout never silently yields "".
+      const titleEl = container.querySelector(
+        "[id*='video-title'], .yt-lockup-metadata-view-model__title, " +
+          "[class*='lockup'][class*='title'], h3 a"
+      );
       let title = titleEl ? titleEl.textContent.trim() : "";
       if (!title) {
-        title = link.getAttribute("title") || link.getAttribute("aria-label") || "";
+        title =
+          link.getAttribute("title") ||
+          link.getAttribute("aria-label") ||
+          link.textContent.trim() ||
+          "";
       }
 
       const href = link.href || link.getAttribute("href");
@@ -193,13 +232,31 @@
     listVideos: () =>
       Array.from(videoRegistry.entries()).map(([id, el]) => ({
         id,
-        title: el.querySelector("[id*=video-title]")?.textContent?.trim(),
+        title: el
+          .querySelector(
+            "[id*='video-title'], .yt-lockup-metadata-view-model__title, [class*='lockup'][class*='title'], h3 a"
+          )
+          ?.textContent?.trim(),
       })),
     blurAll: () => videoRegistry.forEach(blurElement),
     unblurAll: () => videoRegistry.forEach(unblurElement),
     applyDecisions,
     getIntent: () => new Promise((resolve) => chrome.runtime.sendMessage({ type: "GET_INTENT_SUMMARY" }, resolve)),
     setFocus: (topic) => new Promise((resolve) => chrome.runtime.sendMessage({ type: "SET_FOCUS_TOPIC", topic }, resolve)),
+    // Diagnostic: for every watch link on the page, report whether a tile
+    // container was found and the chain of ancestor tag names. Run
+    // __yrf.probe() in the console and share the output if a section (e.g. the
+    // sidebar) isn't being blurred — it pinpoints the real container tag.
+    probe: () =>
+      Array.from(document.querySelectorAll("a[href*='/watch?v=']"))
+        .slice(0, 12)
+        .map((link) => {
+          const tile = findTile(link);
+          const chain = [];
+          let el = link;
+          for (let i = 0; el && i < 8; i++, el = el.parentElement) chain.push(el.tagName.toLowerCase());
+          return { matched: tile ? tile.tagName.toLowerCase() : null, ancestors: chain.join(" < ") };
+        }),
   };
 
   console.log("[YT Relevance Firewall] content script loaded (S4+S5+S8) — try __yrf.listVideos()");

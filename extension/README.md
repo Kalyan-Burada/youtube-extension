@@ -1,48 +1,49 @@
-# Extension — testing Session 4
+# Extension
 
-No backend calls yet (that's Session 5). Today's only goal: prove the
-scraper finds real video tiles and the blur class actually applies/removes.
+Manifest V3 Chrome extension. Scrapes video tiles on YouTube, asks the
+backend (`http://localhost:8000/score`) whether each is relevant to your
+current focus, and blurs everything that isn't. Fails safe: a tile stays
+blurred until the backend explicitly says "allow", so an offline backend or
+unset focus topic means everything stays blurred — never default-open.
 
 ## Load it
 
-1. `chrome://extensions`
-2. Toggle "Developer mode" (top right)
-3. "Load unpacked" → select the `extension/` folder
-4. Open `https://www.youtube.com` (home page or search results)
+1. Start the backend first (see `../backend/README.md`) — `/health` should
+   return `ok`.
+2. `chrome://extensions` → toggle **Developer mode** (top right).
+3. **Load unpacked** → select this `extension/` folder.
+4. Open `https://www.youtube.com`, click the extension icon, set a focus
+   topic (e.g. "Machine Learning"), then **Rescan this page**.
 
-## Manual test (devtools console, on the YouTube tab)
+Relevant videos sharpen within ~1s; everything else stays blurred.
+
+## Popup
+
+- **Focus topic** — the main intent signal. Saved to `chrome.storage.local`.
+- **Rescan this page** — re-scrapes and re-scores the current tab.
+- **On/Off toggle** — off un-blurs everything and pauses scoring.
+- **Backend indicator** — green = online, red = offline (and so everything
+  stays blurred, which is why the dot is there: it explains the blur).
+
+## Debugging (devtools console on the YouTube tab)
 
 ```js
-__yrf.listVideos()
-```
-Should print an array of `{ id, title }` for every video tile currently on
-screen. If it returns `[]`, YouTube's DOM changed — inspect a video tile
-and update the `LAYOUTS` selectors at the top of `content.js`.
-
-Everything should already look blurred on page load (that's the fail-safe
-default — every scraped tile is blurred immediately, before any scoring
-exists). To confirm blur/unblur itself works independently of scraping:
-
-```js
-__yrf.unblurAll()   // every found tile should sharpen
-__yrf.blurAll()     // and re-blur
+__yrf.listVideos()      // every tracked tile as { id, title }
+__yrf.unblurAll()       // sharpen all (sanity-check the blur class)
+__yrf.blurAll()         // re-blur all
+__yrf.setFocus("Music") // set focus topic without the popup
 ```
 
-Scroll down to load more videos, then run `__yrf.listVideos()` again — the
-count should grow. That confirms the MutationObserver is catching
-YouTube's infinite scroll, not just the initial page load.
+If `__yrf.listVideos()` returns `[]`, YouTube's DOM drifted from the
+selectors at the top of `content.js` — inspect a tile and update them.
+Nothing downstream needs to change.
 
-Click into a video, then click "back" — run `__yrf.listVideos()` once
-more. If it returns stale/duplicate entries, the `yt-navigate-finish`
-reset isn't firing correctly for that navigation path; flag it in
-`PROJECT_STATUS.md` notes rather than debugging deeply today — Session 5
-will be touching this same navigation logic anyway when it adds the
-"currently watching" signal.
+## Package for distribution
 
-## What's intentionally NOT done yet
+```bash
+./package.sh   # -> ../yt-relevance-firewall-extension.zip
+```
 
-- No network calls to the backend (S5)
-- No real allow/blur decisions — `applyDecisions()` exists and is wired to
-  the registry, but nothing calls it yet except your manual console tests
-- Shorts shelf is not scraped (different DOM entirely — backlog item, not
-  blocking)
+## Not handled
+
+- Shorts shelf (different DOM entirely) — backlog, not blocking.
