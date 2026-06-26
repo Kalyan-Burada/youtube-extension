@@ -1,23 +1,37 @@
+
+
 import re
 from typing import Dict, Optional, Set
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
+import logging
+
 from .cache import EmbeddingCache, make_signature
 from .config import (
     CLIP_ALLOW_THRESHOLD,
     CROSS_ALLOW_THRESHOLD,
+    CROSS_BLUR_THRESHOLD,
     EMBED_ALLOW_THRESHOLD,
+    EMBED_BLUR_THRESHOLD,
 )
 from .cross_encoder import rerank_batch
-from .embeddings import build_intent_embedding, build_intent_text, cosine_sim, encode
+from .embeddings import (
+    INTENT_EMBED_VERSION,
+    build_intent_embedding,
+    build_intent_text,
+    cosine_sim,
+    encode,
+)
 from .models import ScoreRequest, ScoreResponse, VideoScore
 from .vision import cosine_sim as clip_cosine_sim
 from .vision import encode_image_from_url
 from .vision import encode_text as clip_encode_text
 
-app = FastAPI(title="YouTube Relevance Engine", version="0.2.0")
+logger = logging.getLogger("yrf")
+
+app = FastAPI(title="YouTube Relevance Engine", version="0.3.0")
 
 # Tighten allow_origins to the extension's own origin (chrome-extension://<id>)
 # before shipping — wide open "*" is fine for local dev only.
@@ -79,7 +93,21 @@ def focus_topic_matches_title(focus_topic: Optional[str], title: str) -> bool:
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    # Thresholds/version are echoed so you can curl /health and confirm the
+    # running process actually picked up the latest code, instead of guessing
+    # whether --reload reloaded.
+    return {
+        "status": "ok",
+        "version": app.version,
+        "intent_embed_version": INTENT_EMBED_VERSION,
+        "thresholds": {
+            "embed_allow": EMBED_ALLOW_THRESHOLD,
+            "embed_blur": EMBED_BLUR_THRESHOLD,
+            "cross_allow": CROSS_ALLOW_THRESHOLD,
+            "cross_blur": CROSS_BLUR_THRESHOLD,
+            "clip_allow": CLIP_ALLOW_THRESHOLD,
+        },
+    }
 
 
 @app.post("/score", response_model=ScoreResponse)
@@ -91,7 +119,10 @@ def score(req: ScoreRequest):
     if not req.videos:
         return ScoreResponse(results=[])
 
+    # outcomes[video_id] = {"score": float, "decision": str, "stage": str}
     outcomes: Dict[str, dict] = {}
+
+    # --- Stage 0: explicit keyword match (free, runs before any model) -----
     videos_to_score = []
     for video in req.videos:
         if focus_topic_matches_title(intent.focus_topic, video.title):
@@ -99,22 +130,43 @@ def score(req: ScoreRequest):
         else:
             videos_to_score.append(video)
 
-    if not videos_to_score:
-        return ScoreResponse(
-            results=[
-                VideoScore(
-                    id=video.id,
-                    score=round(outcomes[video.id]["score"], 4),
-                    decision=outcomes[video.id]["decision"],
-                    stage=outcomes[video.id]["stage"],
+    if videos_to_score:
+        try:
+            _run_cascade(intent, videos_to_score, outcomes)
+        except Exception:  # noqa: BLE001 — last-resort safety net
+            # A model blew up after the keyword pass. Never crash the request
+            # and never default-open: blur everything still unresolved.
+            logger.exception("Scoring cascade failed; failing safe (blur).")
+            for video in videos_to_score:
+                outcomes.setdefault(
+                    video.id, {"score": 0.0, "decision": "blur", "stage": "stage_error"}
                 )
-                for video in req.videos
-            ]
-        )
 
+    return ScoreResponse(
+        results=[
+            VideoScore(
+                id=video.id,
+                score=round(float(outcomes[video.id]["score"]), 4),
+                decision=outcomes[video.id]["decision"],
+                stage=outcomes[video.id]["stage"],
+            )
+            for video in req.videos
+        ]
+    )
+
+
+def _run_cascade(intent, videos_to_score, outcomes: Dict[str, dict]) -> None:
+    """Borderline-band waterfall. Mutates `outcomes` in place so the keyword
+    matches resolved by the caller are preserved.
+
+    Each stage either resolves a video (allow/blur) or, for the borderline
+    middle band, defers it to the next, more expensive stage. Stage 3 is the
+    last resort and always makes a final call.
+    """
     # --- Resolve the intent embedding + intent text (cached unless the ---
     # --- signals actually changed) -----------------------------------------
     signature = make_signature(
+        INTENT_EMBED_VERSION,
         intent.focus_topic or "",
         intent.current_video_title or "",
         "|".join(intent.recent_titles),
@@ -147,63 +199,67 @@ def score(req: ScoreRequest):
             cache.set_video_embedding(vid, title, vec)
             video_vecs[vid] = vec
 
-# --- Stage 1: Cheap embedding cosine similarity, every video --------
-    unresolved = []
-
+    # --- Stage 1: cheap embedding cosine similarity, every video ----------
+    borderline = []
     for video in videos_to_score:
         sim = cosine_sim(intent_vec, video_vecs[video.id])
         if sim >= EMBED_ALLOW_THRESHOLD:
             outcomes[video.id] = {"score": sim, "decision": "allow", "stage": "embedding"}
+        elif sim < EMBED_BLUR_THRESHOLD:
+            outcomes[video.id] = {"score": sim, "decision": "blur", "stage": "embedding"}
         else:
-            # S1 Failed: Push to Stage 2 instead of blurring
-            outcomes[video.id] = {"score": sim, "decision": "blur", "stage": "embedding_failed"}
-            unresolved.append(video)
+            # Borderline band — keep a provisional blur (fail safe) and defer.
+            outcomes[video.id] = {"score": sim, "decision": "blur", "stage": "embedding"}
+            borderline.append(video)
 
-    # --- Stage 2: CrossEncoder rerank, only on S1 failures --------
-    if unresolved and intent_text:
-        titles = [v.title for v in unresolved]
-        cross_scores = rerank_batch(intent_text, titles)
-        still_unresolved = []
-        for video, cscore in zip(unresolved, cross_scores):
-            if cscore >= CROSS_ALLOW_THRESHOLD:
-                outcomes[video.id] = {"score": cscore, "decision": "allow", "stage": "cross_encoder"}
-            else:
-                # S2 Failed: Push to Stage 3
-                outcomes[video.id]["score"] = cscore
-                outcomes[video.id]["stage"] = "cross_encoder_failed"
-                still_unresolved.append(video)
-        unresolved = still_unresolved
+    # --- Stage 2: CrossEncoder rerank, only on the borderline band --------
+    if borderline and intent_text:
+        titles = [v.title for v in borderline]
+        try:
+            cross_scores = rerank_batch(intent_text, titles)
+        except Exception:  # noqa: BLE001
+            logger.exception("Stage 2 (cross-encoder) failed; deferring band to Stage 3.")
+            cross_scores = None
 
-    # --- Stage 3: CLIP vision on the thumbnail, last resort --------------
-    if unresolved:
-        intent_clip_vec = clip_encode_text(intent_text) if intent_text else None
-        for video in unresolved:
+        if cross_scores is not None:
+            still_borderline = []
+            for video, cscore in zip(borderline, cross_scores):
+                if cscore >= CROSS_ALLOW_THRESHOLD:
+                    outcomes[video.id] = {
+                        "score": cscore, "decision": "allow", "stage": "cross_encoder"
+                    }
+                elif cscore < CROSS_BLUR_THRESHOLD:
+                    outcomes[video.id] = {
+                        "score": cscore, "decision": "blur", "stage": "cross_encoder"
+                    }
+                else:
+                    # Still borderline — defer to vision but record the score.
+                    outcomes[video.id]["score"] = cscore
+                    still_borderline.append(video)
+            borderline = still_borderline
+
+    # --- Stage 3: CLIP vision on the thumbnail, last resort ---------------
+    if borderline:
+        intent_clip_vec = None
+        if intent_text:
+            try:
+                intent_clip_vec = clip_encode_text(intent_text)
+            except Exception:  # noqa: BLE001
+                logger.exception("Stage 3 (CLIP text) failed; failing safe (blur).")
+
+        for video in borderline:
             if not video.thumbnail_url or intent_clip_vec is None:
-                # No image to check, or no usable intent text — fail safe.
+                # No image to check, or CLIP text tower unavailable — fail safe.
                 outcomes[video.id]["decision"] = "blur"
                 outcomes[video.id]["stage"] = "no_signal"
                 continue
-            
+
             img_vec = encode_image_from_url(video.thumbnail_url)
             if img_vec is None:
                 outcomes[video.id]["decision"] = "blur"
                 outcomes[video.id]["stage"] = "vision_failed"
                 continue
-            
-            vscore = clip_cosine_sim(intent_clip_vec, img_vec)
-            if vscore >= CLIP_ALLOW_THRESHOLD:
-                outcomes[video.id] = {"score": vscore, "decision": "allow", "stage": "vision"}
-            else:
-                # S3 Failed: The video is finally blurred.
-                outcomes[video.id] = {"score": vscore, "decision": "blur", "stage": "vision"}
 
-    results = [
-        VideoScore(
-            id=video.id,
-            score=round(outcomes[video.id]["score"], 4),
-            decision=outcomes[video.id]["decision"],
-            stage=outcomes[video.id]["stage"],
-        )
-        for video in req.videos
-    ]
-    return ScoreResponse(results=results)
+            vscore = clip_cosine_sim(intent_clip_vec, img_vec)
+            decision = "allow" if vscore >= CLIP_ALLOW_THRESHOLD else "blur"
+            outcomes[video.id] = {"score": vscore, "decision": decision, "stage": "vision"}

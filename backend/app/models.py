@@ -38,8 +38,17 @@ class ScoreRequest(BaseModel):
 Decision = Literal["allow", "blur", "borderline"]
 
 # Which stage produced the final decision — useful for debugging and for
-# calibrate.py's per-stage accuracy breakdown.
-Stage = Literal["keyword_match", "embedding", "cross_encoder", "vision", "no_signal", "vision_failed"]
+# calibrate.py's per-stage accuracy breakdown. Every value main.py can emit
+# must be listed here or pydantic will 500 the whole /score response.
+Stage = Literal[
+    "keyword_match",   # explicit focus keyword found in the title
+    "embedding",       # resolved by Stage 1 (SentenceTransformer)
+    "cross_encoder",   # resolved by Stage 2 (CrossEncoder rerank)
+    "vision",          # resolved by Stage 3 (CLIP thumbnail)
+    "no_signal",       # reached Stage 3 but had no thumbnail to check
+    "vision_failed",   # reached Stage 3 but the thumbnail could not be fetched
+    "stage_error",     # a model failed mid-cascade; failed safe (blur)
+]
 
 
 class VideoScore(BaseModel):

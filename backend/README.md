@@ -10,8 +10,13 @@ pip install -r requirements.txt
 ```
 
 First run downloads three models — `all-mpnet-base-v2` (~420MB),
-`cross-encoder/ms-marco-MiniLM-L-6-v2` (~90MB), and `clip-ViT-B-32`
+`cross-encoder/stsb-TinyBERT-L-4` (~17MB), and `clip-ViT-B-32`
 (~600MB). All are cached locally after that.
+
+> **Note:** the app forces the PyTorch backend (`USE_TF=0`) at import time in
+> `app/__init__.py`. Without that, `transformers` tries to load TensorFlow and
+> hard-crashes on machines that have Keras 3 installed. Nothing to configure —
+> just don't remove that block.
 
 ## Run
 
@@ -43,16 +48,17 @@ Response now includes which stage resolved each video:
 ```json
 {
   "results": [
-    { "id": "v1", "score": 0.61, "decision": "allow", "stage": "embedding" },
-    { "id": "v2", "score": 0.58, "decision": "allow", "stage": "embedding" },
-    { "id": "v3", "score": 0.08, "decision": "blur",  "stage": "embedding" }
+    { "id": "v1", "score": 0.31, "decision": "allow", "stage": "embedding" },
+    { "id": "v2", "score": 0.41, "decision": "allow", "stage": "embedding" },
+    { "id": "v3", "score": 0.02, "decision": "blur",  "stage": "cross_encoder" }
   ]
 }
 ```
 
-A title that lands in the 0.25–0.50 band won't resolve at the embedding
-stage — it'll show `"stage": "cross_encoder"` or `"stage": "vision"`
-instead, depending on how far down the cascade it had to go.
+A title that lands in the embedding borderline band
+(`EMBED_BLUR_THRESHOLD`–`EMBED_ALLOW_THRESHOLD`) won't resolve at Stage 1 —
+it'll show `"stage": "cross_encoder"` or `"stage": "vision"` instead,
+depending on how far down the cascade it had to go.
 
 ## The cascade (app/main.py)
 
@@ -90,6 +96,17 @@ not intuition — to decide whether `EMBED_*`/`CROSS_*` thresholds need
 moving. Stage 3 (vision) isn't covered by this set since it needs real
 thumbnail URLs; that calibration pass comes once the extension has
 actually scraped some real videos.
+
+## Tests
+
+```bash
+python -m pytest tests/ -v
+```
+
+Integration tests that drive the real `/score` cascade end-to-end (keyword,
+embedding, and cross-encoder stages) plus the keyword matcher as a unit. They
+load the models on first run, so the first invocation is slow. The bad-thumbnail
+test asserts the Stage-3 failure path fails safe (blur) instead of 500-ing.
 
 ## Files
 

@@ -6,6 +6,12 @@ from sentence_transformers import SentenceTransformer
 _MODEL_NAME = "all-mpnet-base-v2"
 _model: Optional[SentenceTransformer] = None
 
+# Bump this whenever the embedding model OR the intent-construction logic
+# (expand_focus_topic, weights, templates) changes. It is mixed into the cache
+# signature so old cached vectors are never silently reused after an update —
+# the #1 cause of "I changed the code but the behavior didn't change".
+INTENT_EMBED_VERSION = "v3-expand"
+
 
 def get_model() -> SentenceTransformer:
     """Lazy-load the model once per process, not once per request."""
@@ -27,6 +33,31 @@ def cosine_sim(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.dot(a, b))
 
 
+def expand_focus_topic(focus_topic: str) -> List[tuple]:
+    """Generic intent expansion for the focus topic — returns (text, weight)
+    pairs whose embeddings get averaged into the intent vector.
+
+    This is NOT a per-topic keyword/synonym dictionary: the same templates wrap
+    whatever the user typed. A bare topic ("movie", "cricket") embeds weakly
+    against real titles, so we pair the raw topic with a generic
+    "A YouTube video about {topic}" template, and — only for SHORT, generic
+    topics (<= 3 words) — add one broader paraphrase to widen the topic's
+    semantic footprint a little. Long, already-specific focus topics
+    ("telugu movie trailers 2026") are left precise: broadening them only
+    pulls in unrelated content. Weights and the word-count gate are validated
+    by calibrate.py (full-cascade accuracy holds at 97.5%); re-run it if you
+    touch them.
+    """
+    parts = [(focus_topic, 0.5), (f"A YouTube video about {focus_topic}", 0.35)]
+    word_count = len(focus_topic.split())
+    if 1 <= word_count <= 3:
+        parts.append((f"Videos, clips and discussion related to {focus_topic}", 0.15))
+    else:
+        # No broad paraphrase — give the template its weight back instead.
+        parts[1] = (parts[1][0], 0.5)
+    return parts
+
+
 def build_intent_embedding(
     focus_topic: Optional[str],
     current_video_title: Optional[str],
@@ -42,8 +73,15 @@ def build_intent_embedding(
     weights: List[float] = []
 
     if focus_topic:
-        texts.append(focus_topic)
-        weights.append(1.0)
+        # A bare topic ("Python Programming") embeds weakly against real video
+        # titles that never spell the topic out ("Django REST Framework Crash
+        # Course"). expand_focus_topic() pairs the raw topic with generic,
+        # topic-agnostic templates to widen its semantic footprint — NOT a
+        # per-topic keyword list. The focus topic's combined weight stays ~1.0
+        # so the current-video / history weighting below is unchanged.
+        for text, weight in expand_focus_topic(focus_topic):
+            texts.append(text)
+            weights.append(weight)
 
     if current_video_title:
         texts.append(current_video_title)
