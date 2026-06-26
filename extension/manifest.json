@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "YouTube Relevance Firewall",
+  "version": "0.1.0",
+  "description": "Blurs YouTube videos that aren't relevant to your current focus topic.",
+  "permissions": ["storage", "activeTab"],
+  "host_permissions": [
+    "https://www.youtube.com/*",
+    "http://localhost:8000/*"
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.youtube.com/*"],
+      "js": ["content.js"],
+      "css": ["styles.css"]
+    }
+  ]
+}

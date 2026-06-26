@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>YouTube Relevance Firewall</title>
+    <style>
+      :root {
+        --bg: #0f0f0f;
+        --fg: #f1f1f1;
+        --muted: #9a9a9a;
+        --accent: #3ea6ff;
+        --danger: #ff6b6b;
+        --ok: #5fd97a;
+        --border: #262626;
+      }
+      body {
+        width: 280px;
+        margin: 0;
+        padding: 14px;
+        font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+        background: var(--bg);
+        color: var(--fg);
+      }
+      h1 {
+        font-size: 14px;
+        margin: 0 0 10px;
+        font-weight: 600;
+      }
+      label {
+        font-size: 12px;
+        color: var(--muted);
+        display: block;
+        margin-bottom: 4px;
+      }
+      input[type="text"] {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 7px 8px;
+        border-radius: 6px;
+        border: 1px solid #333;
+        background: #1a1a1a;
+        color: var(--fg);
+        font-size: 13px;
+        margin-bottom: 8px;
+      }
+      button {
+        width: 100%;
+        padding: 8px;
+        border: none;
+        border-radius: 6px;
+        background: var(--accent);
+        color: #051018;
+        font-weight: 600;
+        font-size: 13px;
+        cursor: pointer;
+        margin-bottom: 8px;
+      }
+      button:hover {
+        opacity: 0.9;
+      }
+      button.secondary {
+        background: #262626;
+        color: var(--fg);
+      }
+      .section {
+        margin-top: 12px;
+        padding-top: 10px;
+        border-top: 1px solid var(--border);
+      }
+      .row {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        font-size: 12px;
+        margin-bottom: 4px;
+      }
+      .row .v {
+        color: var(--muted);
+        text-align: right;
+        max-width: 170px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .status {
+        font-size: 12px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        display: inline-block;
+        background: var(--muted);
+      }
+      .dot.ok {
+        background: var(--ok);
+      }
+      .dot.bad {
+        background: var(--danger);
+      }
+    </style>
+  </head>
+  <body>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+      <h1 style="margin: 0;">YouTube Relevance Firewall</h1>
+      <label style="margin: 0; display: flex; align-items: center; cursor: pointer; color: var(--fg); font-size: 13px;">
+        <input type="checkbox" id="toggleExtension" style="margin-right: 4px;"> On
+      </label>
+    </div>
+
+    <label for="focusInput">Focus topic</label>
+    <input id="focusInput" type="text" placeholder="e.g. Machine Learning" />
+    <button id="saveBtn">Save focus topic</button>
+    <button id="rescanBtn" class="secondary">Rescan this page</button>
+
+    <div class="section">
+      <div class="row"><span>Currently watching</span><span class="v" id="currentVideo">—</span></div>
+      <div class="row"><span>Recent history</span><span class="v" id="recentTitles">—</span></div>
+    </div>
+
+    <div class="section status">
+      <span class="dot" id="statusDot"></span>
+      <span id="statusText">Checking backend…</span>
+    </div>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

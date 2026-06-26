@@ -1,0 +1,49 @@
+[
+  {"domain": "python", "focus_topic": "Python Programming", "title": "FastAPI Authentication Tutorial", "expected": "allow"},
+  {"domain": "python", "focus_topic": "Python Programming", "title": "Django REST Framework Crash Course", "expected": "allow"},
+  {"domain": "python", "focus_topic": "Python Programming", "title": "NumPy Array Broadcasting Explained", "expected": "allow"},
+  {"domain": "python", "focus_topic": "Python Programming", "title": "Best Cricket Bowling Techniques", "expected": "blur"},
+  {"domain": "python", "focus_topic": "Python Programming", "title": "How to Make Biryani at Home", "expected": "blur"},
+
+  {"domain": "cricket", "focus_topic": "Cricket", "title": "IPL 2026 Highlights Final Match", "expected": "allow"},
+  {"domain": "cricket", "focus_topic": "Cricket", "title": "How to Bowl a Perfect Yorker", "expected": "allow"},
+  {"domain": "cricket", "focus_topic": "Cricket", "title": "Virat Kohli Batting Masterclass", "expected": "allow"},
+  {"domain": "cricket", "focus_topic": "Cricket", "title": "Python List Comprehension Tutorial", "expected": "blur"},
+  {"domain": "cricket", "focus_topic": "Cricket", "title": "Best Pasta Recipes for Beginners", "expected": "blur"},
+
+  {"domain": "cooking", "focus_topic": "Cooking", "title": "Easy Masala Dosa Recipe", "expected": "allow"},
+  {"domain": "cooking", "focus_topic": "Cooking", "title": "Knife Skills Every Cook Should Know", "expected": "allow"},
+  {"domain": "cooking", "focus_topic": "Cooking", "title": "How to Make Perfect Chicken Biryani", "expected": "allow"},
+  {"domain": "cooking", "focus_topic": "Cooking", "title": "Premier League Transfer News Today", "expected": "blur"},
+  {"domain": "cooking", "focus_topic": "Cooking", "title": "JavaScript Async Await Explained", "expected": "blur"},
+
+  {"domain": "medicine", "focus_topic": "Medicine", "title": "Understanding the Cardiac Cycle", "expected": "allow"},
+  {"domain": "medicine", "focus_topic": "Medicine", "title": "How Antibiotics Work in the Body", "expected": "allow"},
+  {"domain": "medicine", "focus_topic": "Medicine", "title": "Diagnosing Type 2 Diabetes", "expected": "allow"},
+  {"domain": "medicine", "focus_topic": "Medicine", "title": "Top 10 Anime Openings of All Time", "expected": "blur"},
+  {"domain": "medicine", "focus_topic": "Medicine", "title": "Guitar Chords for Absolute Beginners", "expected": "blur"},
+
+  {"domain": "anime", "focus_topic": "Anime", "title": "Top 10 Shonen Anime of All Time", "expected": "allow"},
+  {"domain": "anime", "focus_topic": "Anime", "title": "Attack on Titan Ending Explained", "expected": "allow"},
+  {"domain": "anime", "focus_topic": "Anime", "title": "One Piece Latest Episode Review", "expected": "allow"},
+  {"domain": "anime", "focus_topic": "Anime", "title": "Stock Market Basics for Beginners", "expected": "blur"},
+  {"domain": "anime", "focus_topic": "Anime", "title": "How to Fix a Leaking Kitchen Faucet", "expected": "blur"},
+
+  {"domain": "history", "focus_topic": "History", "title": "The Fall of the Roman Empire", "expected": "allow"},
+  {"domain": "history", "focus_topic": "History", "title": "World War 2 Documentary Part 1", "expected": "allow"},
+  {"domain": "history", "focus_topic": "History", "title": "Ancient Egyptian Pyramids Explained", "expected": "allow"},
+  {"domain": "history", "focus_topic": "History", "title": "Best Smartphones to Buy in 2026", "expected": "blur"},
+  {"domain": "history", "focus_topic": "History", "title": "How to Train for a Marathon", "expected": "blur"},
+
+  {"domain": "music", "focus_topic": "Music Production", "title": "How to Mix Vocals in FL Studio", "expected": "allow"},
+  {"domain": "music", "focus_topic": "Music Production", "title": "Music Theory Basics for Producers", "expected": "allow"},
+  {"domain": "music", "focus_topic": "Music Production", "title": "Sound Design for Beginners", "expected": "allow"},
+  {"domain": "music", "focus_topic": "Music Production", "title": "Cricket World Cup Final Highlights", "expected": "blur"},
+  {"domain": "music", "focus_topic": "Music Production", "title": "Web Development Roadmap 2026", "expected": "blur"},
+
+  {"domain": "finance", "focus_topic": "Personal Finance", "title": "How to Build an Emergency Fund", "expected": "allow"},
+  {"domain": "finance", "focus_topic": "Personal Finance", "title": "Index Funds Explained for Beginners", "expected": "allow"},
+  {"domain": "finance", "focus_topic": "Personal Finance", "title": "Understanding Compound Interest", "expected": "allow"},
+  {"domain": "finance", "focus_topic": "Personal Finance", "title": "Anime Recommendations for Beginners", "expected": "blur"},
+  {"domain": "finance", "focus_topic": "Personal Finance", "title": "Best Football Skills of 2026", "expected": "blur"}
+]
